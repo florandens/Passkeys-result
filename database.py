@@ -1,10 +1,10 @@
 from pymongo import MongoClient
 from pymongo.errors import ConnectionFailure, OperationFailure
 import config as cfg
- 
+import basic_database_function as basic_db
+import specific_database_function as specific_db
+import re 
 
- 
- 
 # ─────────────────────────────────────────────
 # CONNECTION
 # ─────────────────────────────────────────────
@@ -14,52 +14,35 @@ def get_collection(uri=cfg.MONGO_URI, db_name=cfg.DATABASE, col_name=cfg.COLLECT
     client.admin.command("ping")          # quick connectivity check
     return client[db_name][col_name]
 
-def count_documents(collection, query=None):
+# ─────────────────────────────────────────────
+# DATABASE helper functions
+# ─────────────────────────────────────────────
+def extract_field(documents, extract_path):
+    """Extract a nested field from a list of documents using dot-notation path."""
+    def _dig(doc, keys):
+        for key in keys:
+            if not isinstance(doc, dict):
+                return None
+            doc = doc.get(key)
+        return doc
+
+    keys = extract_path.split(".")
+    results = [_dig(doc, keys) for doc in documents]
+    results = [r for r in results if r is not None]
+
+    if not results:
+        return None
+    if len(results) == 1:
+        return results[0]      
+    return results     
+
+def find_with_regex(data_list, pattern):
     """
-    Count documents in the collection.
-
-    Examples:
-        count_documents(col)                        → count all
-        count_documents(col, {"status": "active"})  → count with filter
+    data_list: list of strings
+    pattern: regex pattern (string)
     """
-    query = query or {}
-    result = collection.count_documents(query)
-    print(f"Count ({query or 'all'}): {result}")
-    return result
-
-def count_passkeys_supported(collection):
-    PASSKEY_FIELD = "result.scripts.SearchPasskeys.data.passkeys_supported"
-    return {
-        "true"   : collection.count_documents({PASSKEY_FIELD: True}),
-        "false"  : collection.count_documents({PASSKEY_FIELD: False}),
-        "missing": collection.count_documents({PASSKEY_FIELD: {"$exists": False}}),
-        "total"  : collection.count_documents({}),
-    }
-
-def search_keyword_in_api_calls(collection, keyword):
-    API_FIELD = "result.scripts.SearchPasskeys.data.all_api_call"
-    URL_FIELD = "result.scripts.SearchPasskeys.data.url"
- 
-    # Only fetch documents that actually have the api_call array
-    cursor = collection.find(
-        {API_FIELD: {"$exists": True, "$ne": []}},
-        {API_FIELD: 1, URL_FIELD: 1, "_id": 0}
-    )
- 
-    results = []
-    keyword_lower = keyword.lower()
- 
-    for doc in cursor:
-        data       = doc.get("result", {}).get("scripts", {}).get("SearchPasskeys", {}).get("data", {})
-        api_calls  = data.get("all_api_call", [])
-        url        = data.get("url", "unknown")
- 
-        for call in api_calls:
-            if isinstance(call, str) and keyword_lower in call.lower():
-                results.append({"url": url, "match": call})
-                break   # one match per document, then move to the next
- 
-    return results
+    regex = re.compile(pattern, re.IGNORECASE)
+    return [item for item in data_list if isinstance(item, str) and regex.search(item)]        
 
 def print_table(data, title="Result"):                      #AI generated
     """
@@ -108,9 +91,19 @@ def main():
         return
     
 
-    print_table(count_documents(col), "Total document count")
-    print_table(count_passkeys_supported(col), "passkeys_supported breakdown")
-    print_table(search_keyword_in_api_calls(col, "passkey"), "Documents with 'passkey' in API calls")
-
+    #print_table(basic_db.count_documents(col), "Total document count")
+    #print_table(specific_db.count_passkeys_supported(col), "passkeys_supported breakdown")
+    #print_table(specific_db.search_keyword_in_api_calls(col, "passkey"), "Documents with 'passkey' in API calls")
+    #print_table(basic_db.get_field(col, "command.entry.content"), "All URLs with SearchPasskeys data")
+    #print_table(basic_db.get_field_where(col, 'command.entry.content', "https://ah.nl", "result.scripts.SearchPasskeys.data.all_api_call"))
+    #doc = col.find_one({'command.entry.content': {"$exists": True}})
+    #print(doc["command"]["entry"])
+    databasehit = basic_db.get_field(
+        col,
+        "command.entry.content",
+        "https://ah.nl")
+    #print(databasehit)
+    b = extract_field(databasehit, "result.scripts.SearchPasskeys.data.all_api_calls")
+    print(b)
 if __name__ == "__main__":
     main()
