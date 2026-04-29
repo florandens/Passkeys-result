@@ -3,46 +3,20 @@ from pymongo.errors import ConnectionFailure, OperationFailure
 import config as cfg
 import basic_database_function as basic_db
 import specific_database_function as specific_db
-import re 
+import json
 
-# ─────────────────────────────────────────────
-# CONNECTION
-# ─────────────────────────────────────────────
+PASSKEY_ARRAY_LIST = ["passkey", "passkeys", "webauthn"]
+OAUTH_ARRAY_LIST = ["login with", "sign in with", "oauth", "openid", "oidc", "sso"]
+API_KEYWORD_LIST = ["Webauthn-rs", "SimpleWebAuthn", "@passwordless-id/webauthn", "yubico"] #https://passkeys.dev/docs/tools-libraries/libraries/
+#setup connection to MongoDB
 def get_collection(uri=cfg.MONGO_URI, db_name=cfg.DATABASE, col_name=cfg.COLLECTION):
     """Return a MongoDB collection object."""
     client = MongoClient(uri, serverSelectionTimeoutMS=5000)
     client.admin.command("ping")          # quick connectivity check
     return client[db_name][col_name]
+  
 
-# ─────────────────────────────────────────────
-# DATABASE helper functions
-# ─────────────────────────────────────────────
-def extract_field(documents, extract_path):
-    """Extract a nested field from a list of documents using dot-notation path."""
-    def _dig(doc, keys):
-        for key in keys:
-            if not isinstance(doc, dict):
-                return None
-            doc = doc.get(key)
-        return doc
-
-    keys = extract_path.split(".")
-    results = [_dig(doc, keys) for doc in documents]
-    results = [r for r in results if r is not None]
-
-    if not results:
-        return None
-    if len(results) == 1:
-        return results[0]      
-    return results     
-
-def find_with_regex(data_list, pattern):
-    """
-    data_list: list of strings
-    pattern: regex pattern (string)
-    """
-    regex = re.compile(pattern, re.IGNORECASE)
-    return [item for item in data_list if isinstance(item, str) and regex.search(item)]        
+ 
 
 def print_table(data, title="Result"):                      #AI generated
     """
@@ -81,29 +55,75 @@ def print_table(data, title="Result"):                      #AI generated
         print(f"  {data}")
  
     print(f"{'─' * 44}\n")
+
+def write_data_to_file(data, output_path):
+    """Write dict/list/scalar data to a file and return written item count."""
+    with open(output_path, "w", encoding="utf-8") as f:
+        if isinstance(data, dict):
+            f.write(json.dumps(data, ensure_ascii=False, indent=2, default=str))
+            item_count = len(data)
+        elif isinstance(data, list) and data:
+            for item in data:
+                f.write(json.dumps(item, ensure_ascii=False, default=str) + "\n")
+            item_count = len(data)
+        elif isinstance(data, list):
+            item_count = 0
+        else:
+            f.write(str(data))
+            item_count = 1
+
+    return item_count
+
 def main():
     # Establish connection once
     try:
         col = get_collection()
-        print("✓ Connected to MongoDB")
+        print("Connected to MongoDB")
     except ConnectionFailure as e:
-        print(f"✗ Could not connect: {e}")
+        print(f"x Could not connect: {e}")
         return
-    
+    """the database count function to every site or subsite in the dataset"""
+    #print_table(basic_db.count_documents(col), "Total documents in collection")
+    #print_table(basic_db.count_bool_values(col, "result.scripts.SearchPasskeys.data.login_page"), "Have login page breakdown")
 
-    #print_table(basic_db.count_documents(col), "Total document count")
-    #print_table(specific_db.count_passkeys_supported(col), "passkeys_supported breakdown")
-    #print_table(specific_db.search_keyword_in_api_calls(col, "passkey"), "Documents with 'passkey' in API calls")
-    #print_table(basic_db.get_field(col, "command.entry.content"), "All URLs with SearchPasskeys data")
-    #print_table(basic_db.get_field_where(col, 'command.entry.content', "https://ah.nl", "result.scripts.SearchPasskeys.data.all_api_call"))
-    #doc = col.find_one({'command.entry.content': {"$exists": True}})
-    #print(doc["command"]["entry"])
-    databasehit = basic_db.get_field(
-        col,
-        "command.entry.content",
-        "https://ah.nl")
-    #print(databasehit)
-    b = extract_field(databasehit, "result.scripts.SearchPasskeys.data.all_api_calls")
-    print(b)
+    """count in the database every diffrent website it visit, it romove the one that comming form the login generator"""
+    #count_website = basic_db.count_by_field_value(col, "command.origin", "UrlGenerator", {"result.scripts.SearchPasskeys.data.website_exists": True})
+    #print(f"Count of documents with command.origin='UrlGenerator' and website_exists=True: {count_website}")
+    """work with tapi_calles"""
+    #test = specific_db.search_passkeys_api_calls(col, ["passkey", "fido", "webauthn"])
+    #specific_db.debug_search_passkeys_api_calls(col, ["passkey", "fido", "webauthn"])
+    #print(f"Found API calls with specified keywords: {test}")
+    #write_data_to_file(test, "api_calls_with_keywords.json")
+    #passkey_urls, oauth_urls = specific_db.search_html_for_keywords(col,passkeys_keywoord=["passkey", "fido", "webauthn"], oauth_keywords=["login with google", "login with apple", "login with github","login with facebook", "si"])
+    #print_table(different_values_for_field, "Different values for command.origin")
+    #print(different_values_for_field)
+    #print(urls)
+    # Store URLs to text file
+    """if passkey_urls:
+        item_count = write_data_to_file(passkey_urls, "urlsshort.json")
+        print(f"✓ Stored {item_count} entries to urlsshort.json")
+    if oauth_urls:
+        item_count = write_data_to_file(oauth_urls, "oauth_urls.json")
+        print(f"✓ Stored {item_count} entries to oauth_urls.json")"""
+    #print_table(urls, "Found URLs with specified keywords") 
+   #specific_db.debug_gridfs(col)
+    '''api_results, passkey_urls, oauth_urls = pipeline_db.search_passkeys_and_html(
+    col,
+    api_keywords     = ["passkey", "fido", "webauthn"],
+    passkey_keywords = PASSKEY_ARRAY_LIST,
+    oauth_keywords   = OAUTH_ARRAY_LIST,
+    limit            = 10000,
+    )
+
+    write_data_to_file(api_results,   "api_calls_with_keywords.json")
+    write_data_to_file(passkey_urls,  "passkey_urls.json")
+    write_data_to_file(oauth_urls,    "oauth_urls.json")'''
+
+    api =specific_db.search_api_calls(col, API_KEYWORD_LIST)
+    write_data_to_file(api, "api_calls_with_keywords.json")
+    #results = specific_db.scan_html_keywords(col, PASSKEY_ARRAY_LIST, OAUTH_ARRAY_LIST)
+    #write_data_to_file(results["passkey"], "passkey_urls.json")
+    #write_data_to_file(results["oauth"], "oauth_urls.json")
+
 if __name__ == "__main__":
     main()
