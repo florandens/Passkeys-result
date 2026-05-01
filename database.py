@@ -7,7 +7,7 @@ import json
 
 PASSKEY_ARRAY_LIST = ["passkey", "passkeys", "webauthn"]
 OAUTH_ARRAY_LIST = ["login with", "sign in with", "oauth", "openid", "oidc", "sso"]
-API_KEYWORD_LIST = ["Webauthn-rs", "SimpleWebAuthn", "@passwordless-id/webauthn", "yubico"] #https://passkeys.dev/docs/tools-libraries/libraries/
+API_KEYWORD_LIST = ["webauthn-rs", "simplewebauthn", "yubico", "webauthn"] #https://passkeys.dev/docs/tools-libraries/libraries/
 #setup connection to MongoDB
 def get_collection(uri=cfg.MONGO_URI, db_name=cfg.DATABASE, col_name=cfg.COLLECTION):
     """Return a MongoDB collection object."""

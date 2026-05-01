@@ -36,6 +36,9 @@ from specific_database_function import your_function
 
 Then call the function with the appropriate parameters.
 
+## Analyse of API
+The selectLibaresVersion go over the api calles that are made and search to typically libaries that used and search for version numbers, first only in the url and if there is no hit it load the JavaScript code and search there for version numbers
+
 ## Notes
 
 * Make sure your MongoDB instance is running and accessible via `MONGO_URI`.

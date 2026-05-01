@@ -17,18 +17,19 @@ GRIDFS_BUCKET = "_files"
 
 
 # api calls scanner
-def search_api_calls(collection, api_keywords):
+def search_api_calls(collection : Collection, api_keywords : list) -> dict:
     if not api_keywords:
         return {}
-    mongo_filter = {LOGIN_PAGE_FIELD: True, GET_REQUEST_FIELD: {"$exists": True}}
+    #mongo_filter = {LOGIN_PAGE_FIELD: True, GET_REQUEST_FIELD: {"$exists": True}}
+    mongo_filter = {}
     pattern = "|".join(api_keywords)
 
     api_keyword_filter = {
         "$or": [
-            {"url": {"$regex": pattern, "$options": "i"}},
-            {"req.url": {"$regex": pattern, "$options": "i"}},
-            {"req.response.url": {"$regex": pattern, "$options": "i"}},
-            {"req.response.response_headers_extra.set-cookie": {"$regex": pattern, "$options": "i"}},
+            # {"url": {"$regex": pattern, "$options": "i"}},
+            {"requests.url": {"$regex": pattern, "$options": "i"}},
+            {"requests.response.url": {"$regex": pattern, "$options": "i"}},
+            {"requests.response.response_headers_extra.set-cookie": {"$regex": pattern, "$options": "i"}},
         ]
     }
 
@@ -64,11 +65,11 @@ def search_api_calls(collection, api_keywords):
         for m in doc["matches"]:
             for kw in api_keywords:
                 if m.get("url") and kw in m["url"]:
-                    hits.append(("url", m["url"]))
+                    hits.append({"url": m["url"]})
                 if m.get("resp_url") and kw in m["resp_url"]:
-                    hits.append(("response.url", m["resp_url"]))
+                    hits.append({"response.url": m["resp_url"]})
                 if m.get("set_cookie") and kw in m["set_cookie"]:
-                    hits.append(("set-cookie", m["set_cookie"]))
+                    hits.append({"set-cookie": m["set_cookie"]})
 
         if hits:
             results[base_url] = hits
@@ -77,7 +78,7 @@ def search_api_calls(collection, api_keywords):
 
 
 # html scan
-def scan_html_keywords(collection, passkey_keywords, oauth_keywords, encoding="utf-8"):
+def scan_html_keywords(collection : Collection, passkey_keywords : list, oauth_keywords : list, encoding="utf-8") -> dict:
     mongo_filter = {
         LOGIN_PAGE_FIELD: True,
         HTML_STORE_FIELD: {"$exists": True, "$ne": None},
@@ -91,7 +92,7 @@ def scan_html_keywords(collection, passkey_keywords, oauth_keywords, encoding="u
     task_queue = queue.Queue(maxsize=200)
     SENTINEL = object()
 
-    # ── Producer ───────────────────────────────────────────────────────────────
+    # prodcuer scans documents and enqueues file_ids for workers to process
     def producer():
         seen_domains = set()
         for doc in collection.find(
@@ -123,7 +124,7 @@ def scan_html_keywords(collection, passkey_keywords, oauth_keywords, encoding="u
 
         task_queue.put(SENTINEL)
 
-    # ── Worker ─────────────────────────────────────────────────────────────────
+    # worker threads consume file_ids, fetch HTML from GridFS, and scan for keywords
     def worker():
         p_local = 0
         o_local = 0
